@@ -7,7 +7,7 @@
 <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
 <style>
-  :root { --bg:#1a1a2e;--surface:#16213e;--border:#334155;--text:#e2e8f0;--muted:#94a3b8;--accent:#38bdf8;--accent2:#f472b6;--success:#4ade80;--warn:#fbbf24;--danger:#f87171; }
+  :root{--bg:#1a1a2e;--surface:#16213e;--border:#334155;--text:#e2e8f0;--muted:#94a3b8;--accent:#38bdf8;--accent2:#f472b6;--success:#4ade80;--warn:#fbbf24;--danger:#f87171}
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
   header{background:var(--surface);border-bottom:1px solid var(--border);padding:16px 24px;display:flex;align-items:center;gap:16px}
@@ -55,429 +55,445 @@
     <div class="controls">
       <div class="tolerance-control">
         <label>Join tolerance:</label>
-        <input type="range" id="tolerance" min="0" max="5" step="0.1" value="0.5">
-        <span class="tol-value" id="tolValue">0.5 pt</span>
+        <input type="range" id="tolerance" min="0" max="5" step="0.05" value="0.5">
+        <span class="tol-value" id="tolValue">0.50 pt</span>
       </div>
       <button class="btn" id="btnWeld" disabled>⚡ Weld Paths</button>
       <button class="btn primary" id="btnExport" disabled>💾 Export Welded PDF</button>
     </div>
     <div class="canvas-area">
-      <div class="canvas-panel"><div class="panel-header"><span class="dot red"></span> Before — Disconnected Paths</div><svg id="svgBefore" xmlns="http://www.w3.org/2000/svg"></svg></div>
-      <div class="canvas-panel"><div class="panel-header"><span class="dot green"></span> After — Welded Paths</div><svg id="svgAfter" xmlns="http://www.w3.org/2000/svg"></svg></div>
+      <div class="canvas-panel"><div class="panel-header"><span class="dot red"></span> Before — Disconnected</div><svg id="svgBefore" xmlns="http://www.w3.org/2000/svg"></svg></div>
+      <div class="canvas-panel"><div class="panel-header"><span class="dot green"></span> After — Welded</div><svg id="svgAfter" xmlns="http://www.w3.org/2000/svg"></svg></div>
     </div>
   </div>
   <div class="log" id="log"></div>
 </div>
 <script>
-const logEl=document.getElementById('log');
-function log(m,c=''){const d=document.createElement('div');d.className='entry '+c;d.textContent=m;logEl.appendChild(d);logEl.scrollTop=logEl.scrollHeight;}
+/* ════════════════════════════════════════════
+   PathWelder – browser port of Grok's die_path_joiner.py
+   ════════════════════════════════════════════ */
 
-let pdfBytes=null, origStreamText='', pageMediaBox=null, currentFileName='';
-let parsedSegments=[]; // [{absPoints, ctm, color, lineWidth, layerName, isFill, isDashed, origPathText}]
-let weldedChains=[];   // [{absPoints, color, lineWidth, layerName, closed}]
-let unweldedSegs=[];    // segments that didn't join (fills, dashes, singletons)
-
-/* ── Decompress ── */
-function decompressStream(bytes){
-  const p=new Uint8Array(bytes);
-  try{return pako.inflate(p);}catch(e){try{return pako.inflateRaw(p);}catch(e2){return null;}}
+const logEl = document.getElementById('log');
+function log(m, c = '') {
+  const d = document.createElement('div');
+  d.className = 'entry ' + c; d.textContent = m;
+  logEl.appendChild(d); logEl.scrollTop = logEl.scrollHeight;
 }
 
-/* ── Find drawing stream ── */
-function findDrawingStream(bytes){
-  const text=new TextDecoder('latin1').decode(bytes.slice(0));
-  const re=/stream\r?\n/g;let m;
-  while((m=re.exec(text))!==null){
-    const si=m.index+m[0].length;
-    if(m.index>=3&&text.substring(m.index-3,m.index)==='end')continue;
-    const ei=text.indexOf('endstream',si);if(ei===-1)continue;
-    let raw=bytes.slice(si,ei);
-    while(raw.length>0&&(raw[raw.length-1]===0x0A||raw[raw.length-1]===0x0D))raw=raw.slice(0,-1);
-    const dec=decompressStream(raw);if(!dec)continue;
-    const decoded=new TextDecoder('latin1').decode(dec);
-    if(decoded.trimStart().startsWith('%'))continue;
-    if(/^[Sf]\s*$/m.test(decoded)&&/\d\s+m[\r\n]/.test(decoded))return decoded;
+let pdfBytes = null, currentFileName = '';
+let pageWidth = 0, pageHeight = 0;
+let solidSegs = [], dashedSegs = [], regMarks = [];
+let joinedChains = [];
+
+/* ── Decompress a PDF stream (pako, strip trailing EOL) ── */
+function decompressStream(bytes) {
+  const p = new Uint8Array(bytes);
+  try { return pako.inflate(p); } catch (e) {
+    try { return pako.inflateRaw(p); } catch (e2) { return null; }
+  }
+}
+
+/* ── Extract the drawing content stream text from raw PDF bytes ── */
+function getContentStream(bytes) {
+  const text = new TextDecoder('latin1').decode(bytes.slice(0));
+  const re = /stream\r?\n/g; let m;
+  while ((m = re.exec(text)) !== null) {
+    const si = m.index + m[0].length;
+    if (m.index >= 3 && text.substring(m.index - 3, m.index) === 'end') continue;
+    const ei = text.indexOf('endstream', si); if (ei === -1) continue;
+    let raw = bytes.slice(si, ei);
+    while (raw.length > 0 && (raw[raw.length - 1] === 0x0A || raw[raw.length - 1] === 0x0D))
+      raw = raw.slice(0, -1);
+    const dec = decompressStream(raw); if (!dec) continue;
+    const decoded = new TextDecoder('latin1').decode(dec);
+    if (decoded.trimStart().startsWith('%')) continue;
+    if (/^[Sf]\s*$/m.test(decoded) && /\d\s+m[\r\n]/.test(decoded)) return decoded;
   }
   return null;
 }
 
-/* ── CTM math ── */
-function mulCTM(a,b){return{a:a.a*b.a+a.b*b.c,b:a.a*b.b+a.b*b.d,c:a.c*b.a+a.d*b.c,d:a.c*b.b+a.d*b.d,e:a.e*b.a+a.f*b.c+b.e,f:a.e*b.b+a.f*b.d+b.f};}
-function txPt(x,y,ct){return{x:ct.a*x+ct.c*y+ct.e,y:ct.b*x+ct.d*y+ct.f};}
-const I={a:1,b:0,c:0,d:1,e:0,f:0};
+/* ══════════════════════════════════════
+   Direct port of Grok's parse / join logic
+   ══════════════════════════════════════ */
 
-/* ── Full stream parser — extract all segments with absolute coords ── */
-function parseStreamFull(st){
-  const lines=st.replace(/\r\n/g,'\n').replace(/\r/g,'\n').split('\n');
-  const segments=[];
-  const ctmStack=[{...I}];
-  let ctm={...I};
-  let color='#fff',lineWidth=1,layerName='Default',isDashed=false;
-  let curPath=[];  // [{op,x,y,...}] in absolute coords
-  let curPathRaw=[]; // original text lines for this path
-
-  const PR=/^(-?\d[\d.]*\s+){1,6}[mlcvy]$/;
-  const RR=/^(-?\d[\d.]*\s+){3,4}re$/;
-
-  function flushPath(paintOp){
-    if(!curPath.length){curPathRaw=[];return;}
-    const isFill=paintOp==='f'||paintOp==='F'||paintOp==='f*'||paintOp==='B'||paintOp==='B*';
-    const isStroke=paintOp==='S'||paintOp==='s'||paintOp==='B'||paintOp==='B*';
-    // Extract subpaths (split on m)
-    const subpaths=[];let cur=[];
-    for(const pt of curPath){
-      if(pt.op==='m'){if(cur.length)subpaths.push(cur);cur=[pt];}
-      else cur.push(pt);
+/* Parse q 1 0 0 1 tx ty cm … S Q blocks into absolute-coordinate segments */
+function parseContentStream(data) {
+  const segments = [];
+  const blockRe = /q\s+1\s+0\s+0\s+1\s+([-\d.]+)\s+([-\d.]+)\s+cm\s+(.*?)\s+S\s+Q/gs;
+  let bm;
+  while ((bm = blockRe.exec(data)) !== null) {
+    const tx = parseFloat(bm[1]), ty = parseFloat(bm[2]);
+    const body = bm[3];
+    const pts = [];
+    // Collect points in order of appearance
+    const opRe = /([-\d.]+)\s+([-\d.]+)\s+m|([-\d.]+)\s+([-\d.]+)\s+l|([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+c/g;
+    let om;
+    while ((om = opRe.exec(body)) !== null) {
+      if (om[1] !== undefined) // moveTo
+        pts.push([tx + parseFloat(om[1]), ty + parseFloat(om[2])]);
+      else if (om[3] !== undefined) // lineTo
+        pts.push([tx + parseFloat(om[3]), ty + parseFloat(om[4])]);
+      else if (om[5] !== undefined) // curveTo – keep endpoint
+        pts.push([tx + parseFloat(om[9]), ty + parseFloat(om[10])]);
     }
-    if(cur.length)subpaths.push(cur);
-    for(const sp of subpaths){
-      if(sp.length<2)continue;
-      const absPoints=sp.map(p=>({op:p.op,x:p.x,y:p.y,x1:p.x1,y1:p.y1,x2:p.x2,y2:p.y2}));
-      segments.push({absPoints,color,lineWidth,layerName,isFill,isStroke,isDashed,origPathText:curPathRaw.join('\n')});
-    }
-    curPath=[];curPathRaw=[];
-  }
-
-  for(let i=0;i<lines.length;i++){
-    const t=lines[i].trim();if(!t)continue;
-    const parts=t.split(/\s+/);
-    const op=parts[parts.length-1];
-
-    // Graphics state
-    if(op==='q'){ctmStack.push({...ctm});continue;}
-    if(op==='Q'){if(ctmStack.length>1)ctm=ctmStack.pop();continue;}
-    if(op==='cm'&&parts.length>=7){
-      const nc={a:+parts[0],b:+parts[1],c:+parts[2],d:+parts[3],e:+parts[4],f:+parts[5]};
-      ctm=mulCTM(nc,ctm);continue;
-    }
-
-    // Color
-    if(op==='K'&&parts.length>=5){const[c,m2,y,k]=[+parts[0],+parts[1],+parts[2],+parts[3]];color=`rgb(${Math.round(255*(1-c)*(1-k))},${Math.round(255*(1-m2)*(1-k))},${Math.round(255*(1-y)*(1-k))})`;}
-    if(op==='SCN'||op==='scn')color='#ff00ff';
-    if(op==='RG'&&parts.length>=4)color=`rgb(${Math.round(+parts[0]*255)},${Math.round(+parts[1]*255)},${Math.round(+parts[2]*255)})`;
-    if(op==='w'&&parts.length>=2)lineWidth=+parts[0];
-    if(op==='d')isDashed=t.includes('[')&&!t.includes('[]');
-
-    // Layer
-    const bdc=t.match(/^\/OC\s+(\/\w+)\s+BDC/);if(bdc)layerName=bdc[1].slice(1);
-
-    // Clipping rect — skip
-    if(RR.test(t)){
-      let isClip=false;
-      for(let j=i+1;j<lines.length;j++){const nt=lines[j].trim();if(!nt)continue;if(/^W\*?\s*(n)?$/.test(nt))isClip=true;break;}
-      if(isClip)continue;
-    }
-
-    // Path ops — transform to absolute coordinates
-    if(op==='m'&&parts.length>=3){
-      // New subpath within current path
-      const p=txPt(+parts[0],+parts[1],ctm);
-      curPath.push({op:'m',x:p.x,y:p.y});curPathRaw.push(lines[i]);continue;
-    }
-    if(op==='l'&&parts.length>=3){const p=txPt(+parts[0],+parts[1],ctm);curPath.push({op:'l',x:p.x,y:p.y});curPathRaw.push(lines[i]);continue;}
-    if(op==='c'&&parts.length>=7){
-      const p1=txPt(+parts[0],+parts[1],ctm),p2=txPt(+parts[2],+parts[3],ctm),p3=txPt(+parts[4],+parts[5],ctm);
-      curPath.push({op:'c',x:p3.x,y:p3.y,x1:p1.x,y1:p1.y,x2:p2.x,y2:p2.y});curPathRaw.push(lines[i]);continue;
-    }
-    if(op==='h'){if(curPath.length)curPath.push({op:'h',x:curPath[0].x,y:curPath[0].y});curPathRaw.push(lines[i]);continue;}
-
-    // Paint ops
-    if(op==='S'||op==='s'){flushPath('S');continue;}
-    if(op==='f'||op==='F'||op==='f*'){flushPath('f');continue;}
-    if(op==='B'||op==='B*'||op==='b'||op==='b*'){flushPath('B');continue;}
-    if(op==='n'){curPath=[];curPathRaw=[];continue;} // discard (clipping)
+    if (pts.length >= 2) segments.push(pts);
   }
   return segments;
 }
 
-/* ── Endpoint-based chaining across all segments ── */
-function gS(pts){return{x:pts[0].x,y:pts[0].y};}
-function gE(pts){const l=pts[pts.length-1];return{x:l.x,y:l.y};}
-function pD(a,b){return Math.sqrt((a.x-b.x)**2+(a.y-b.y)**2);}
+/* Also parse paths inside a single shared CTM block (shallowbox pattern):
+   q 1 0 0 1 tx ty cm
+     x y m  x y l … x y m  x y l … (multiple subpaths)
+   S
+   Q
+   Split on moveTo to get individual segments. */
+function parseSharedCTMBlock(data) {
+  const segments = [];
+  // Match blocks with a single S that contain multiple m operators
+  const blockRe = /q\s+1\s+0\s+0\s+1\s+([-\d.]+)\s+([-\d.]+)\s+cm\s+(.*?)\s+S\s/gs;
+  let bm;
+  while ((bm = blockRe.exec(data)) !== null) {
+    const tx = parseFloat(bm[1]), ty = parseFloat(bm[2]);
+    const body = bm[3];
+    // Count moveto ops — if >1, split into subpaths
+    const mCount = (body.match(/([-\d.]+)\s+([-\d.]+)\s+m/g) || []).length;
+    if (mCount <= 1) continue; // already handled by parseContentStream
 
-function reversePoints(pts){
-  if(pts.length<=1)return[...pts];
-  const e=gE(pts);const r=[{op:'m',x:e.x,y:e.y}];
-  for(let i=pts.length-1;i>=1;i--){
-    const s=pts[i],p=pts[i-1];
-    if(s.op==='c')r.push({op:'c',x:p.x,y:p.y,x1:s.x2,y1:s.y2,x2:s.x1,y2:s.y1});
-    else r.push({op:'l',x:p.x,y:p.y});
+    let curSeg = [];
+    const opRe = /([-\d.]+)\s+([-\d.]+)\s+m|([-\d.]+)\s+([-\d.]+)\s+l|([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+c/g;
+    let om;
+    while ((om = opRe.exec(body)) !== null) {
+      if (om[1] !== undefined) { // moveTo — start new segment
+        if (curSeg.length >= 2) segments.push(curSeg);
+        curSeg = [[tx + parseFloat(om[1]), ty + parseFloat(om[2])]];
+      } else if (om[3] !== undefined) { // lineTo
+        curSeg.push([tx + parseFloat(om[3]), ty + parseFloat(om[4])]);
+      } else if (om[5] !== undefined) { // curveTo
+        curSeg.push([tx + parseFloat(om[9]), ty + parseFloat(om[10])]);
+      }
+    }
+    if (curSeg.length >= 2) segments.push(curSeg);
   }
-  return r;
+  return segments;
 }
 
-function weldSegments(segments,tol){
-  // Only weld stroked, non-fill, non-dashed segments
-  const strokeSegs=[], otherSegs=[];
-  for(const seg of segments){
-    if(seg.isStroke&&!seg.isFill&&!seg.isDashed&&seg.absPoints.length>=2)
-      strokeSegs.push(seg);
-    else otherSegs.push(seg);
-  }
+/* Extract registration mark centres (filled circles) */
+function extractRegMarks(data) {
+  const marks = [];
+  const re = /q\s+1\s+0\s+0\s+1\s+([-\d.]+)\s+([-\d.]+)\s+cm\s+.*?f\s+Q/gs;
+  let m;
+  while ((m = re.exec(data)) !== null)
+    marks.push([parseFloat(m[1]), parseFloat(m[2])]);
+  return marks;
+}
 
-  if(strokeSegs.length<=1)return{chains:strokeSegs.map(s=>({absPoints:s.absPoints,color:s.color,lineWidth:s.lineWidth,layerName:s.layerName,closed:false})),others:otherSegs,joins:0};
+/* Join segments that share endpoints (Grok's algorithm) */
+function dist(a, b) { return Math.hypot(a[0] - b[0], a[1] - b[1]); }
 
-  // Endpoint map for fast lookup
-  const key=p=>`${Math.round(p.x*100)/100},${Math.round(p.y*100)/100}`;
-  const endMap=new Map();
-  strokeSegs.forEach((seg,i)=>{
-    const addKey=(p,isStart)=>{const k=key(p);if(!endMap.has(k))endMap.set(k,[]);endMap.get(k).push({idx:i,isStart});};
-    addKey(gS(seg.absPoints),true);
-    addKey(gE(seg.absPoints),false);
+function ptKey(p, tol) {
+  return `${Math.round(p[0] / tol) * tol},${Math.round(p[1] / tol) * tol}`;
+}
+
+function joinSegments(segments, tol = 0.05) {
+  if (!segments.length) return [];
+  const ends = new Map();
+  segments.forEach((seg, i) => {
+    const addK = (p, isStart) => {
+      const k = ptKey(p, tol);
+      if (!ends.has(k)) ends.set(k, []);
+      ends.get(k).push({ idx: i, isStart });
+    };
+    addK(seg[0], true);
+    addK(seg[seg.length - 1], false);
   });
 
-  const used=new Set();
-  const chains=[];
-  let joins=0;
+  const used = new Set();
+  const chains = [];
 
-  for(let i=0;i<strokeSegs.length;i++){
-    if(used.has(i))continue;
+  for (let i = 0; i < segments.length; i++) {
+    if (used.has(i)) continue;
+    const chain = [segments[i].slice()];
     used.add(i);
-    let chain=[...strokeSegs[i].absPoints];
-    let chainColor=strokeSegs[i].color;
-    let chainLW=strokeSegs[i].lineWidth;
-    let chainLayer=strokeSegs[i].layerName;
 
     // Grow forward
-    let changed=true;
-    while(changed){
-      changed=false;
-      const ce=gE(chain);
-      const candidates=endMap.get(key(ce))||[];
-      for(const c of candidates){
-        if(used.has(c.idx))continue;
-        const seg=strokeSegs[c.idx];
-        // Double-check distance with actual coords
-        const matchPt=c.isStart?gS(seg.absPoints):gE(seg.absPoints);
-        if(pD(ce,matchPt)>tol)continue;
-        if(c.isStart){
-          chain=chain.concat(seg.absPoints.slice(1));
-        } else {
-          chain=chain.concat(reversePoints(seg.absPoints).slice(1));
-        }
-        used.add(c.idx);changed=true;joins++;break;
-      }
+    while (true) {
+      const endPt = chain[chain.length - 1][chain[chain.length - 1].length - 1];
+      const cands = ends.get(ptKey(endPt, tol)) || [];
+      const nxt = cands.find(c => !used.has(c.idx));
+      if (!nxt) break;
+      const seg = segments[nxt.idx];
+      chain.push(nxt.isStart ? seg.slice() : seg.slice().reverse());
+      used.add(nxt.idx);
     }
+
     // Grow backward
-    changed=true;
-    while(changed){
-      changed=false;
-      const cs=gS(chain);
-      const candidates=endMap.get(key(cs))||[];
-      for(const c of candidates){
-        if(used.has(c.idx))continue;
-        const seg=strokeSegs[c.idx];
-        const matchPt=c.isStart?gS(seg.absPoints):gE(seg.absPoints);
-        if(pD(cs,matchPt)>tol)continue;
-        if(!c.isStart){
-          chain=[...seg.absPoints,...chain.slice(1)];
-        } else {
-          chain=[...reversePoints(seg.absPoints),...chain.slice(1)];
-        }
-        used.add(c.idx);changed=true;joins++;break;
-      }
+    while (true) {
+      const startPt = chain[0][0];
+      const cands = ends.get(ptKey(startPt, tol)) || [];
+      const prv = cands.find(c => !used.has(c.idx));
+      if (!prv) break;
+      const seg = segments[prv.idx];
+      chain.unshift(!prv.isStart ? seg.slice() : seg.slice().reverse());
+      used.add(prv.idx);
     }
 
-    // Check if closed
-    const closed=pD(gS(chain),gE(chain))<=tol;
-    chains.push({absPoints:chain,color:chainColor,lineWidth:chainLW,layerName:chainLayer,closed});
+    // Flatten, dropping duplicate join points
+    const flat = [];
+    chain.forEach((piece, k) => {
+      if (k === 0) flat.push(...piece);
+      else flat.push(...piece.slice(1));
+    });
+    chains.push(flat);
   }
-
-  // Any unused stroke segs
-  for(let i=0;i<strokeSegs.length;i++){
-    if(!used.has(i)){
-      const s=strokeSegs[i];
-      chains.push({absPoints:s.absPoints,color:s.color,lineWidth:s.lineWidth,layerName:s.layerName,closed:false});
-    }
-  }
-
-  return{chains,others:otherSegs,joins};
+  return chains;
 }
 
-/* ── SVG ── */
-function renderSegments(svg,items,showNum){
-  svg.innerHTML='';if(!pageMediaBox)return;
-  const[mx,my,mw,mh]=pageMediaBox;
-  svg.setAttribute('viewBox',`${mx} ${-mh} ${mw-mx} ${mh-my}`);
-  svg.setAttribute('preserveAspectRatio','xMidYMid meet');
-  const colors=['#38bdf8','#f472b6','#4ade80','#fbbf24','#a78bfa','#fb923c','#e879f9','#22d3ee','#f97316','#84cc16'];
-  items.forEach((item,si)=>{
-    const pts=item.absPoints;if(!pts||!pts.length)return;
-    let d='';
-    for(const p of pts){
-      if(p.op==='m')d+=`M${p.x.toFixed(2)} ${(-p.y).toFixed(2)} `;
-      else if(p.op==='l'||p.op==='h')d+=`L${p.x.toFixed(2)} ${(-p.y).toFixed(2)} `;
-      else if(p.op==='c')d+=`C${p.x1.toFixed(2)} ${(-p.y1).toFixed(2)} ${p.x2.toFixed(2)} ${(-p.y2).toFixed(2)} ${p.x.toFixed(2)} ${(-p.y).toFixed(2)} `;
-    }
-    if(item.closed)d+='Z ';
-    if(!d.trim())return;
-    const path=document.createElementNS('http://www.w3.org/2000/svg','path');
-    path.setAttribute('d',d);path.setAttribute('fill','none');
-    path.setAttribute('stroke',showNum?colors[si%colors.length]:(item.color||'#fff'));
-    path.setAttribute('stroke-width',showNum?'1.5':'1.2');
-    if(item.isDashed)path.setAttribute('stroke-dasharray','8 4');
+/* ══════════════════════════════════════
+   SVG rendering
+   ══════════════════════════════════════ */
+function renderSVG(svg, polylines, marks, opts = {}) {
+  svg.innerHTML = '';
+  if (!pageWidth) return;
+  svg.setAttribute('viewBox', `0 ${-pageHeight} ${pageWidth} ${pageHeight}`);
+  svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+  const colors = ['#38bdf8','#f472b6','#4ade80','#fbbf24','#a78bfa','#fb923c','#e879f9','#22d3ee','#f97316','#84cc16'];
+
+  polylines.forEach((pts, i) => {
+    if (pts.length < 2) return;
+    let d = `M${pts[0][0].toFixed(2)} ${(-pts[0][1]).toFixed(2)}`;
+    for (let j = 1; j < pts.length; j++)
+      d += ` L${pts[j][0].toFixed(2)} ${(-pts[j][1]).toFixed(2)}`;
+    if (dist(pts[0], pts[pts.length - 1]) < 1.5) d += ' Z';
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', d); path.setAttribute('fill', 'none');
+    path.setAttribute('stroke', opts.numbered ? colors[i % colors.length] : '#e84060');
+    path.setAttribute('stroke-width', '1.2');
+    if (opts.dashed && opts.dashed.has(i)) path.setAttribute('stroke-dasharray', '8 4');
     svg.appendChild(path);
-    if(showNum&&pts.length>=2){
-      const st=gS(pts),en=gE(pts);
-      [[st,'#4ade80'],[en,'#f87171']].forEach(([pt,fill])=>{const c=document.createElementNS('http://www.w3.org/2000/svg','circle');c.setAttribute('cx',pt.x.toFixed(2));c.setAttribute('cy',(-pt.y).toFixed(2));c.setAttribute('r','3');c.setAttribute('fill',fill);svg.appendChild(c);});
-      const mid=pts[Math.floor(pts.length/2)];
-      const lbl=document.createElementNS('http://www.w3.org/2000/svg','text');
-      lbl.setAttribute('x',mid.x.toFixed(2));lbl.setAttribute('y',(-(mid.y)+8).toFixed(2));
-      lbl.setAttribute('fill',colors[si%colors.length]);lbl.setAttribute('font-size','8');lbl.setAttribute('text-anchor','middle');
-      lbl.textContent=`${si}`;svg.appendChild(lbl);
+
+    if (opts.numbered) {
+      // Start/end dots
+      const s = pts[0], e = pts[pts.length - 1];
+      for (const [pt, fill] of [[s, '#4ade80'], [e, '#f87171']]) {
+        const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        c.setAttribute('cx', pt[0].toFixed(2)); c.setAttribute('cy', (-pt[1]).toFixed(2));
+        c.setAttribute('r', '3'); c.setAttribute('fill', fill); svg.appendChild(c);
+      }
+      const mid = pts[Math.floor(pts.length / 2)];
+      const lbl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      lbl.setAttribute('x', mid[0].toFixed(2)); lbl.setAttribute('y', (-mid[1] + 8).toFixed(2));
+      lbl.setAttribute('fill', colors[i % colors.length]); lbl.setAttribute('font-size', '8');
+      lbl.setAttribute('text-anchor', 'middle'); lbl.textContent = String(i); svg.appendChild(lbl);
     }
   });
+
+  // Registration marks
+  for (const [mx, my] of marks) {
+    const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    c.setAttribute('cx', mx.toFixed(2)); c.setAttribute('cy', (-my).toFixed(2));
+    c.setAttribute('r', '6'); c.setAttribute('fill', '#888'); c.setAttribute('opacity', '0.5');
+    svg.appendChild(c);
+  }
 }
 
-/* ── PDF Export ── */
-function fmt(n){const s=n.toFixed(4);return s.replace(/\.?0+$/,'')||'0';}
+/* ══════════════════════════════════════
+   PDF export — build from scratch with pdf-lib (like reportlab)
+   ══════════════════════════════════════ */
+async function exportWeldedPDF() {
+  if (!joinedChains.length && !dashedSegs.length) return;
+  log('Building welded PDF...', 'info');
 
-async function exportWeldedPDF(){
-  if(!pdfBytes||(!weldedChains.length&&!unweldedSegs.length))return;
-  log('Building welded PDF...','info');
+  const doc = await PDFLib.PDFDocument.create();
+  const page = doc.addPage([pageWidth, pageHeight]);
 
-  /* Build new content stream from scratch — one path per chain */
-  const streamLines=[];
+  // Registration marks (black filled circles)
+  for (const [mx, my] of regMarks) {
+    page.drawCircle({ x: mx, y: my, size: 9,
+      color: PDFLib.rgb(0, 0, 0), borderWidth: 0 });
+  }
 
-  // Group by layer
-  const layers=new Map();
-  const allItems=[...weldedChains,...unweldedSegs.map(s=>({absPoints:s.absPoints,color:s.color,lineWidth:s.lineWidth,layerName:s.layerName,closed:false,isFill:s.isFill,isDashed:s.isDashed}))];
+  // Joined outlines (red stroked paths)
+  for (const pts of joinedChains) {
+    if (pts.length < 2) continue;
+    // Skip tiny shapes (likely reg mark outlines)
+    const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+    if (Math.max(...xs) - Math.min(...xs) < 30 && Math.max(...ys) - Math.min(...ys) < 30) continue;
 
-  // Collect unique layer names in order
-  const layerOrder=[];const seen=new Set();
-  for(const item of allItems){if(!seen.has(item.layerName)){seen.add(item.layerName);layerOrder.push(item.layerName);}}
+    const closed = dist(pts[0], pts[pts.length - 1]) < 1.5;
 
-  for(const ln of layerOrder){
-    const layerItems=allItems.filter(it=>it.layerName===ln);
-    // Find OC reference name from original stream
-    const ocMatch=origStreamText.match(new RegExp(`/OC\\s+(/\\w+)\\s+BDC[\\s\\S]*?${ln.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}`));
-    const ocName=origStreamText.match(/\/OC\s+(\/\w+)\s+BDC/);
-    // Just use layer markers from original
-    const bdcMatch=origStreamText.match(new RegExp(`/OC\\s+(/\\w+)\\s+BDC`,'g'));
+    // Build the path as raw PDF operators
+    const ops = [];
+    ops.push(`${f(pts[0][0])} ${f(pts[0][1])} m`);
+    for (let i = 1; i < pts.length; i++)
+      ops.push(`${f(pts[i][0])} ${f(pts[i][1])} l`);
+    if (closed) ops.push('h');
+    ops.push('S');
 
-    for(const item of layerItems){
-      streamLines.push('q');
-      // Set color
-      if(item.color&&item.color.startsWith('rgb')){
-        const m=item.color.match(/(\d+)/g);
-        if(m&&m.length>=3){
-          const[r,g,b]=[+m[0]/255,+m[1]/255,+m[2]/255];
-          // Convert to CMYK approx
-          const k2=1-Math.max(r,g,b);
-          if(k2<1){const c2=(1-r-k2)/(1-k2),m2=(1-g-k2)/(1-k2),y2=(1-b-k2)/(1-k2);
-            streamLines.push(`${fmt(c2)} ${fmt(m2)} ${fmt(y2)} ${fmt(k2)} K`);}
-          else streamLines.push('0 0 0 1 K');
-        }
-      }
-      streamLines.push(`${fmt(item.lineWidth)} w`);
-      if(item.isDashed)streamLines.push('[18 9] 0 d');
-      streamLines.push('1 j 1 J'); // round join + cap
+    // Wrap in graphics state
+    const stream = [
+      'q',
+      '0.85 0.05 0.05 RG',  // red stroke
+      '0.72 w',              // line width
+      '1 j 1 J',             // round join + cap
+      ...ops,
+      'Q'
+    ].join('\n');
 
-      // Emit path in absolute coords (identity CTM)
-      for(const p of item.absPoints){
-        if(p.op==='m')streamLines.push(`${fmt(p.x)} ${fmt(p.y)} m`);
-        else if(p.op==='l')streamLines.push(`${fmt(p.x)} ${fmt(p.y)} l`);
-        else if(p.op==='h')streamLines.push('h');
-        else if(p.op==='c')streamLines.push(`${fmt(p.x1)} ${fmt(p.y1)} ${fmt(p.x2)} ${fmt(p.y2)} ${fmt(p.x)} ${fmt(p.y)} c`);
-      }
-      if(item.closed)streamLines.push('h');
-      if(item.isFill)streamLines.push('f');
-      else streamLines.push('S');
-      streamLines.push('Q');
+    // Append to page content
+    const streamBytes = new Uint8Array(stream.length);
+    for (let i = 0; i < stream.length; i++) streamBytes[i] = stream.charCodeAt(i) & 0xFF;
+    const ref = doc.context.register(doc.context.flateStream(streamBytes));
+    const existing = page.node.get(PDFLib.PDFName.of('Contents'));
+    if (existing instanceof PDFLib.PDFArray) {
+      existing.push(ref);
+    } else {
+      const arr = doc.context.obj([existing, ref]);
+      page.node.set(PDFLib.PDFName.of('Contents'), arr);
     }
   }
 
-  const newStream=streamLines.join('\n');
-  log(`New stream: ${newStream.length} chars`,'info');
-  const origMoves=(origStreamText.match(/[\d.]+\s+[\d.-]+\s+m/g)||[]).length;
-  const newMoves=(newStream.match(/[\d.]+\s+[\d.-]+\s+m/g)||[]).length;
-  log(`Moveto ops: ${origMoves} → ${newMoves}`,origMoves!==newMoves?'success':'warn');
+  // Dashed lines (green)
+  if (dashedSegs.length) {
+    const dOps = ['q', '0 0.45 0 RG', '0.72 w', '[18 9] 0 d'];
+    for (const seg of dashedSegs) {
+      if (seg.length >= 2) {
+        dOps.push(`${f(seg[0][0])} ${f(seg[0][1])} m`);
+        for (let i = 1; i < seg.length; i++)
+          dOps.push(`${f(seg[i][0])} ${f(seg[i][1])} l`);
+        dOps.push('S');
+      }
+    }
+    dOps.push('Q');
+    const dStream = dOps.join('\n');
+    const dBytes = new Uint8Array(dStream.length);
+    for (let i = 0; i < dStream.length; i++) dBytes[i] = dStream.charCodeAt(i) & 0xFF;
+    const dRef = doc.context.register(doc.context.flateStream(dBytes));
+    const ex = page.node.get(PDFLib.PDFName.of('Contents'));
+    if (ex instanceof PDFLib.PDFArray) ex.push(dRef);
+    else {
+      const arr = doc.context.obj([ex, dRef]);
+      page.node.set(PDFLib.PDFName.of('Contents'), arr);
+    }
+  }
 
-  /* Write PDF with pdf-lib */
-  const doc=await PDFLib.PDFDocument.load(pdfBytes.slice(0),{ignoreEncryption:true});
-  const page=doc.getPages()[0];
-
-  // Encode as latin-1 bytes
-  const newBytes=new Uint8Array(newStream.length);
-  for(let i=0;i<newStream.length;i++)newBytes[i]=newStream.charCodeAt(i)&0xFF;
-
-  const ns=doc.context.flateStream(newBytes);
-  const nr=doc.context.register(ns);
-  page.node.set(PDFLib.PDFName.of('Contents'),nr);
-
-  // Strip Illustrator private data
-  const pi=page.node.get(PDFLib.PDFName.of('PieceInfo'));
-  if(pi){page.node.delete(PDFLib.PDFName.of('PieceInfo'));log('Stripped Illustrator private data','success');}
-
-  const saved=await doc.save({useObjectStreams:false});
-  const blob=new Blob([saved],{type:'application/pdf'});
-  const url=URL.createObjectURL(blob);const a=document.createElement('a');
-  a.href=url;a.download='welded_'+(currentFileName||'output')+'.pdf';a.click();URL.revokeObjectURL(url);
-  log(`Exported: ${a.download} (${saved.length} bytes)`,'success');
+  const saved = await doc.save({ useObjectStreams: false });
+  const blob = new Blob([saved], { type: 'application/pdf' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url;
+  a.download = 'welded_' + (currentFileName || 'output') + '.pdf';
+  a.click(); URL.revokeObjectURL(url);
+  log(`Exported: ${a.download} (${saved.length} bytes)`, 'success');
 }
 
-/* ── UI ── */
-const dropZone=document.getElementById('dropZone'),fileInput=document.getElementById('fileInput');
-const resultsArea=document.getElementById('resultsArea'),statsBar=document.getElementById('statsBar');
-const tolSlider=document.getElementById('tolerance'),tolValue=document.getElementById('tolValue');
-const btnWeld=document.getElementById('btnWeld'),btnExport=document.getElementById('btnExport');
-dropZone.addEventListener('click',()=>fileInput.click());
-dropZone.addEventListener('dragover',e=>{e.preventDefault();dropZone.classList.add('dragover');});
-dropZone.addEventListener('dragleave',()=>dropZone.classList.remove('dragover'));
-dropZone.addEventListener('drop',e=>{e.preventDefault();dropZone.classList.remove('dragover');if(e.dataTransfer.files.length)handleFile(e.dataTransfer.files[0]);});
-fileInput.addEventListener('change',e=>{if(e.target.files.length)handleFile(e.target.files[0]);});
-tolSlider.addEventListener('input',()=>{tolValue.textContent=`${tolSlider.value} pt`;});
-btnWeld.addEventListener('click',runWeld);
-btnExport.addEventListener('click',exportWeldedPDF);
+function f(n) { const s = n.toFixed(4); return s.replace(/\.?0+$/, '') || '0'; }
 
-async function handleFile(file){
-  currentFileName=file.name.replace(/\.pdf$/i,'');
-  log(`Loading: ${file.name}`,'info');
-  pdfBytes=new Uint8Array(await file.arrayBuffer());parsePDF();
-}
-function parsePDF(){
-  const text=new TextDecoder('latin1').decode(pdfBytes.slice(0));
-  const mb=text.match(/\/MediaBox\s*\[\s*([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s*\]/);
-  pageMediaBox=mb?mb.slice(1,5).map(Number):[0,0,612,792];
-  log(`Page: ${pageMediaBox[2]}×${pageMediaBox[3]} pt`,'info');
-  origStreamText=findDrawingStream(pdfBytes);
-  if(!origStreamText){log('No vector content found!','error');return;}
-  log(`Drawing stream: ${origStreamText.length} chars`,'success');
-  parsedSegments=parseStreamFull(origStreamText);
-  const strokes=parsedSegments.filter(s=>s.isStroke&&!s.isFill);
-  const fills=parsedSegments.filter(s=>s.isFill);
-  log(`  ${strokes.length} stroke segment(s), ${fills.length} fill(s)`,'info');
-  resultsArea.classList.remove('hidden');dropZone.classList.add('hidden');
-  renderSegments(document.getElementById('svgBefore'),parsedSegments,true);
-  document.getElementById('svgAfter').innerHTML='<text x="50%" y="50%" text-anchor="middle" fill="#666" font-size="14">Click "Weld Paths"</text>';
-  updateStats(parsedSegments.length,0,0);btnWeld.disabled=false;btnExport.disabled=true;
-}
-function updateStats(b,a,j){
-  statsBar.innerHTML=`<div class="stat-card before"><div class="label">Before</div><div class="value">${b}</div><div class="detail">segments</div></div>
-  <div class="stat-card after"><div class="label">After</div><div class="value">${a||'—'}</div><div class="detail">continuous paths</div></div>
-  <div class="stat-card savings"><div class="label">Joins Made</div><div class="value">${j||'—'}</div><div class="detail">segments connected</div></div>`;
-}
-function runWeld(){
-  const tol=parseFloat(tolSlider.value);log(`Welding with tolerance ${tol} pt...`,'info');
-  const result=weldSegments(parsedSegments,tol);
-  weldedChains=result.chains;unweldedSegs=result.others;
-  const totalAfter=weldedChains.length+unweldedSegs.length;
-  log(`  Strokes: ${parsedSegments.filter(s=>s.isStroke&&!s.isFill).length} → ${weldedChains.length} path(s) (${result.joins} joins)`,'success');
-  weldedChains.forEach((ch,i)=>{if(ch.closed)log(`    Chain ${i}: CLOSED loop (${ch.absPoints.length} points)`,'success');});
-  log(`  Total: ${parsedSegments.length} → ${totalAfter}`,'success');
-  updateStats(parsedSegments.length,totalAfter,result.joins);
-  const allForRender=[...weldedChains,...unweldedSegs.map(s=>({absPoints:s.absPoints,color:s.color,lineWidth:s.lineWidth,isDashed:s.isDashed}))];
-  renderSegments(document.getElementById('svgAfter'),allForRender,true);
-  btnExport.disabled=false;
+/* ══════════════════════════════════════
+   UI wiring
+   ══════════════════════════════════════ */
+const dropZone = document.getElementById('dropZone'), fileInput = document.getElementById('fileInput');
+const resultsArea = document.getElementById('resultsArea'), statsBar = document.getElementById('statsBar');
+const tolSlider = document.getElementById('tolerance'), tolValueEl = document.getElementById('tolValue');
+const btnWeld = document.getElementById('btnWeld'), btnExport = document.getElementById('btnExport');
+
+dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('dragover'); if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]); });
+fileInput.addEventListener('change', e => { if (e.target.files.length) handleFile(e.target.files[0]); });
+tolSlider.addEventListener('input', () => { tolValueEl.textContent = `${parseFloat(tolSlider.value).toFixed(2)} pt`; });
+btnWeld.addEventListener('click', runWeld);
+btnExport.addEventListener('click', exportWeldedPDF);
+
+async function handleFile(file) {
+  currentFileName = file.name.replace(/\.pdf$/i, '');
+  log(`Loading: ${file.name}`, 'info');
+  pdfBytes = new Uint8Array(await file.arrayBuffer());
+  parsePDF();
 }
 
-/* ── Auto-load ── */
-const params=new URLSearchParams(window.location.search);
-const autoFile=params.get('file');
-if(autoFile){log(`Auto-loading: ${autoFile}`,'info');
-  (async()=>{try{const r=await fetch(autoFile);if(!r.ok)throw new Error(`HTTP ${r.status}`);
-    const buf=await r.arrayBuffer();currentFileName=autoFile.split('/').pop().replace(/\.pdf$/i,'');
-    pdfBytes=new Uint8Array(buf);parsePDF();}catch(e){log(`Auto-load failed: ${e.message}`,'error');}})();
+function parsePDF() {
+  // Get page dimensions
+  const text = new TextDecoder('latin1').decode(pdfBytes.slice(0));
+  const mb = text.match(/\/MediaBox\s*\[\s*([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s*\]/);
+  if (mb) { pageWidth = parseFloat(mb[3]); pageHeight = parseFloat(mb[4]); }
+  else { pageWidth = 612; pageHeight = 792; }
+  log(`Page: ${pageWidth} × ${pageHeight} pt (${(pageWidth/72).toFixed(1)} × ${(pageHeight/72).toFixed(1)} in)`, 'info');
+
+  // Get content stream
+  const stream = getContentStream(pdfBytes);
+  if (!stream) { log('No vector content found!', 'error'); return; }
+  log(`Content stream: ${stream.length} chars`, 'success');
+
+  // Split solid vs dashed (same heuristic as Grok's script)
+  let solidPart = stream, dashedPart = '';
+  const csIdx = stream.indexOf('/CS2');
+  if (csIdx >= 0) { solidPart = stream.substring(0, csIdx); dashedPart = stream.substring(csIdx); }
+
+  // Parse segments — try both patterns
+  solidSegs = parseContentStream(solidPart);
+  const sharedSegs = parseSharedCTMBlock(solidPart);
+  if (sharedSegs.length > solidSegs.length) {
+    log(`  Using shared-CTM parser (${sharedSegs.length} segments)`, 'info');
+    solidSegs = sharedSegs;
+  } else {
+    log(`  Using per-block parser (${solidSegs.length} segments)`, 'info');
+  }
+
+  dashedSegs = parseContentStream(dashedPart);
+  regMarks = extractRegMarks(stream);
+
+  log(`  ${solidSegs.length} solid segment(s), ${dashedSegs.length} dashed, ${regMarks.length} reg mark(s)`, 'info');
+
+  resultsArea.classList.remove('hidden');
+  dropZone.classList.add('hidden');
+
+  // Render before view
+  const allBefore = [...solidSegs, ...dashedSegs];
+  const dashedSet = new Set();
+  for (let i = solidSegs.length; i < allBefore.length; i++) dashedSet.add(i);
+  renderSVG(document.getElementById('svgBefore'), allBefore, regMarks, { numbered: true, dashed: dashedSet });
+  document.getElementById('svgAfter').innerHTML = '<text x="50%" y="50%" text-anchor="middle" fill="#666" font-size="14">Click "Weld Paths"</text>';
+  updateStats(solidSegs.length, 0, 0);
+  btnWeld.disabled = false; btnExport.disabled = true;
+}
+
+function updateStats(b, a, j) {
+  statsBar.innerHTML = `
+    <div class="stat-card before"><div class="label">Before</div><div class="value">${b}</div><div class="detail">segments</div></div>
+    <div class="stat-card after"><div class="label">After</div><div class="value">${a || '—'}</div><div class="detail">continuous paths</div></div>
+    <div class="stat-card savings"><div class="label">Joins</div><div class="value">${j || '—'}</div><div class="detail">segments connected</div></div>`;
+}
+
+function runWeld() {
+  const tol = parseFloat(tolSlider.value);
+  log(`Welding with tolerance ${tol} pt...`, 'info');
+  joinedChains = joinSegments(solidSegs, tol);
+  const joins = solidSegs.length - joinedChains.length;
+  log(`  ${solidSegs.length} segments → ${joinedChains.length} path(s) (${joins} joins)`, 'success');
+  joinedChains.forEach((ch, i) => {
+    const closed = dist(ch[0], ch[ch.length - 1]) < 1.5;
+    if (closed) log(`    Path ${i}: CLOSED loop (${ch.length} points)`, 'success');
+  });
+  updateStats(solidSegs.length, joinedChains.length + dashedSegs.length, joins);
+
+  // Render after
+  const allAfter = [...joinedChains, ...dashedSegs];
+  const dSet = new Set();
+  for (let i = joinedChains.length; i < allAfter.length; i++) dSet.add(i);
+  renderSVG(document.getElementById('svgAfter'), allAfter, regMarks, { numbered: true, dashed: dSet });
+  btnExport.disabled = false;
+}
+
+/* Auto-load */
+const params = new URLSearchParams(window.location.search);
+const autoFile = params.get('file');
+if (autoFile) {
+  log(`Auto-loading: ${autoFile}`, 'info');
+  (async () => { try {
+    const r = await fetch(autoFile); if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    currentFileName = autoFile.split('/').pop().replace(/\.pdf$/i, '');
+    pdfBytes = new Uint8Array(await r.arrayBuffer()); parsePDF();
+  } catch (e) { log(`Auto-load failed: ${e.message}`, 'error'); } })();
 }
 </script>
 </body>
