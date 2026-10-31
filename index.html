@@ -236,7 +236,9 @@ async function exportWeldedPDF(){
     try{const raw=obj.getContents();const dec=decompressStream(new Uint8Array(raw));
       if(!dec)continue;const t=new TextDecoder('latin1').decode(dec);
       if(/^S\s*$/m.test(t)&&/\d\s+m[\r\n]/.test(t)&&!t.trimStart().startsWith('%')){
-        const newBytes=new TextEncoder().encode(newStream);
+        /* Encode as latin-1 bytes — TextEncoder would produce UTF-8 which corrupts bytes > 0x7F */
+        const newBytes=new Uint8Array(newStream.length);
+        for(let i=0;i<newStream.length;i++)newBytes[i]=newStream.charCodeAt(i)&0xFF;
         const ns=doc.context.flateStream(newBytes);const nr=doc.context.register(ns);
         if(contentsVal instanceof PDFLib.PDFArray)contentsVal.set(idx,nr);
         else page.node.set(PDFLib.PDFName.of('Contents'),nr);
