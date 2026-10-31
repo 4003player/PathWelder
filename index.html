@@ -7,65 +7,48 @@
 <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
 <style>
-  :root {
-    --bg: #1a1a2e; --surface: #16213e; --border: #334155;
-    --text: #e2e8f0; --muted: #94a3b8; --accent: #38bdf8;
-    --accent2: #f472b6; --success: #4ade80; --warn: #fbbf24; --danger: #f87171;
-  }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
-  header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 16px 24px; display: flex; align-items: center; gap: 16px; }
-  header h1 { font-size: 1.4rem; font-weight: 600; background: linear-gradient(135deg, var(--accent), var(--accent2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-  header .subtitle { color: var(--muted); font-size: 0.85rem; }
-  .container { max-width: 1400px; margin: 0 auto; padding: 24px; }
-  .drop-zone { border: 2px dashed var(--border); border-radius: 12px; padding: 60px 40px; text-align: center; cursor: pointer; transition: all 0.2s; background: var(--surface); margin-bottom: 24px; }
-  .drop-zone:hover, .drop-zone.dragover { border-color: var(--accent); background: rgba(56,189,248,0.05); }
-  .drop-zone .icon { font-size: 3rem; margin-bottom: 12px; }
-  .drop-zone .label { font-size: 1.1rem; }
-  .drop-zone .hint { font-size: 0.85rem; color: var(--muted); margin-top: 8px; }
-  .drop-zone input { display: none; }
-  .stats-bar { display: flex; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
-  .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px 20px; flex: 1; min-width: 160px; }
-  .stat-card .label { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
-  .stat-card .value { font-size: 1.8rem; font-weight: 700; margin-top: 4px; }
-  .stat-card .detail { font-size: 0.8rem; color: var(--muted); margin-top: 2px; }
-  .stat-card.before .value { color: var(--danger); }
-  .stat-card.after .value { color: var(--success); }
-  .stat-card.savings .value { color: var(--warn); }
-  .canvas-area { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px; }
-  .canvas-panel { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
-  .canvas-panel .panel-header { padding: 12px 16px; border-bottom: 1px solid var(--border); font-size: 0.85rem; font-weight: 600; display: flex; align-items: center; gap: 8px; }
-  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
-  .dot.red { background: var(--danger); } .dot.green { background: var(--success); }
-  .canvas-panel svg { width: 100%; height: 500px; background: #0f0f1a; }
-  .controls { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 24px; }
-  .btn { padding: 10px 20px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font-size: 0.9rem; cursor: pointer; transition: all 0.15s; font-weight: 500; }
-  .btn:hover { border-color: var(--accent); background: rgba(56,189,248,0.1); }
-  .btn.primary { background: var(--accent); color: #000; border-color: var(--accent); }
-  .btn.primary:hover { background: #7dd3fc; }
-  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
-  .tolerance-control { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; color: var(--muted); }
-  .tolerance-control input[type=range] { width: 120px; accent-color: var(--accent); }
-  .tolerance-control .tol-value { color: var(--accent); font-weight: 600; min-width: 50px; }
-  .log { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-top: 24px; max-height: 300px; overflow-y: auto; font-family: 'Cascadia Code','Fira Code',monospace; font-size: 0.8rem; line-height: 1.6; }
-  .log .entry { color: var(--muted); } .log .entry.info { color: var(--accent); }
-  .log .entry.success { color: var(--success); } .log .entry.warn { color: var(--warn); }
-  .log .entry.error { color: var(--danger); }
-  .hidden { display: none !important; }
-  @media(max-width:900px) { .canvas-area { grid-template-columns: 1fr; } }
+  :root { --bg:#1a1a2e;--surface:#16213e;--border:#334155;--text:#e2e8f0;--muted:#94a3b8;--accent:#38bdf8;--accent2:#f472b6;--success:#4ade80;--warn:#fbbf24;--danger:#f87171; }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+  header{background:var(--surface);border-bottom:1px solid var(--border);padding:16px 24px;display:flex;align-items:center;gap:16px}
+  header h1{font-size:1.4rem;font-weight:600;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+  header .subtitle{color:var(--muted);font-size:.85rem}
+  .container{max-width:1400px;margin:0 auto;padding:24px}
+  .drop-zone{border:2px dashed var(--border);border-radius:12px;padding:60px 40px;text-align:center;cursor:pointer;transition:all .2s;background:var(--surface);margin-bottom:24px}
+  .drop-zone:hover,.drop-zone.dragover{border-color:var(--accent);background:rgba(56,189,248,.05)}
+  .drop-zone .icon{font-size:3rem;margin-bottom:12px}.drop-zone .label{font-size:1.1rem}
+  .drop-zone .hint{font-size:.85rem;color:var(--muted);margin-top:8px}.drop-zone input{display:none}
+  .stats-bar{display:flex;gap:16px;margin-bottom:24px;flex-wrap:wrap}
+  .stat-card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px 20px;flex:1;min-width:160px}
+  .stat-card .label{font-size:.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+  .stat-card .value{font-size:1.8rem;font-weight:700;margin-top:4px}
+  .stat-card .detail{font-size:.8rem;color:var(--muted);margin-top:2px}
+  .stat-card.before .value{color:var(--danger)}.stat-card.after .value{color:var(--success)}.stat-card.savings .value{color:var(--warn)}
+  .canvas-area{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:24px}
+  .canvas-panel{background:var(--surface);border:1px solid var(--border);border-radius:8px;overflow:hidden}
+  .canvas-panel .panel-header{padding:12px 16px;border-bottom:1px solid var(--border);font-size:.85rem;font-weight:600;display:flex;align-items:center;gap:8px}
+  .dot{width:8px;height:8px;border-radius:50%;display:inline-block}.dot.red{background:var(--danger)}.dot.green{background:var(--success)}
+  .canvas-panel svg{width:100%;height:500px;background:#0f0f1a}
+  .controls{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:24px}
+  .btn{padding:10px 20px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:.9rem;cursor:pointer;transition:all .15s;font-weight:500}
+  .btn:hover{border-color:var(--accent);background:rgba(56,189,248,.1)}
+  .btn.primary{background:var(--accent);color:#000;border-color:var(--accent)}.btn.primary:hover{background:#7dd3fc}
+  .btn:disabled{opacity:.4;cursor:not-allowed}
+  .tolerance-control{display:flex;align-items:center;gap:8px;font-size:.85rem;color:var(--muted)}
+  .tolerance-control input[type=range]{width:120px;accent-color:var(--accent)}
+  .tolerance-control .tol-value{color:var(--accent);font-weight:600;min-width:50px}
+  .log{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px;margin-top:24px;max-height:300px;overflow-y:auto;font-family:'Cascadia Code','Fira Code',monospace;font-size:.8rem;line-height:1.6}
+  .log .entry{color:var(--muted)}.log .entry.info{color:var(--accent)}.log .entry.success{color:var(--success)}.log .entry.warn{color:var(--warn)}.log .entry.error{color:var(--danger)}
+  .hidden{display:none!important}
+  @media(max-width:900px){.canvas-area{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
-<header><div>
-  <h1>🔥 PathWelder</h1>
-  <div class="subtitle">Join disconnected cut lines into continuous paths</div>
-</div></header>
+<header><div><h1>🔥 PathWelder</h1><div class="subtitle">Join disconnected cut lines into continuous paths</div></div></header>
 <div class="container">
   <div class="drop-zone" id="dropZone">
-    <div class="icon">📐</div>
-    <div class="label">Drop a PDF with die lines here</div>
-    <div class="hint">or click to browse</div>
-    <input type="file" accept=".pdf" id="fileInput">
+    <div class="icon">📐</div><div class="label">Drop a PDF with die lines here</div>
+    <div class="hint">or click to browse</div><input type="file" accept=".pdf" id="fileInput">
   </div>
   <div id="resultsArea" class="hidden">
     <div class="stats-bar" id="statsBar"></div>
@@ -79,14 +62,8 @@
       <button class="btn primary" id="btnExport" disabled>💾 Export Welded PDF</button>
     </div>
     <div class="canvas-area">
-      <div class="canvas-panel">
-        <div class="panel-header"><span class="dot red"></span> Before — Disconnected Paths</div>
-        <svg id="svgBefore" xmlns="http://www.w3.org/2000/svg"></svg>
-      </div>
-      <div class="canvas-panel">
-        <div class="panel-header"><span class="dot green"></span> After — Welded Paths</div>
-        <svg id="svgAfter" xmlns="http://www.w3.org/2000/svg"></svg>
-      </div>
+      <div class="canvas-panel"><div class="panel-header"><span class="dot red"></span> Before — Disconnected Paths</div><svg id="svgBefore" xmlns="http://www.w3.org/2000/svg"></svg></div>
+      <div class="canvas-panel"><div class="panel-header"><span class="dot green"></span> After — Welded Paths</div><svg id="svgAfter" xmlns="http://www.w3.org/2000/svg"></svg></div>
     </div>
   </div>
   <div class="log" id="log"></div>
@@ -95,158 +72,340 @@
 const logEl=document.getElementById('log');
 function log(m,c=''){const d=document.createElement('div');d.className='entry '+c;d.textContent=m;logEl.appendChild(d);logEl.scrollTop=logEl.scrollHeight;}
 
-let pdfBytes=null, parsedBlocks=[], weldedBlocks=[], pageMediaBox=null, currentFileName='';
+let pdfBytes=null, origStreamText='', pageMediaBox=null, currentFileName='';
+let parsedSegments=[]; // [{absPoints, ctm, color, lineWidth, layerName, isFill, isDashed, origPathText}]
+let weldedChains=[];   // [{absPoints, color, lineWidth, layerName, closed}]
+let unweldedSegs=[];    // segments that didn't join (fills, dashes, singletons)
 
-/* ── PDF Stream Extraction ── */
+/* ── Decompress ── */
 function decompressStream(bytes){
-  const proper=new Uint8Array(bytes);
-  try{return pako.inflate(proper);}catch(e){try{return pako.inflateRaw(proper);}catch(e2){return null;}}
+  const p=new Uint8Array(bytes);
+  try{return pako.inflate(p);}catch(e){try{return pako.inflateRaw(p);}catch(e2){return null;}}
 }
+
+/* ── Find drawing stream ── */
 function findDrawingStream(bytes){
   const text=new TextDecoder('latin1').decode(bytes.slice(0));
-  const re=/stream\r?\n/g; let m;
+  const re=/stream\r?\n/g;let m;
   while((m=re.exec(text))!==null){
     const si=m.index+m[0].length;
     if(m.index>=3&&text.substring(m.index-3,m.index)==='end')continue;
-    const ei=text.indexOf('endstream',si); if(ei===-1)continue;
+    const ei=text.indexOf('endstream',si);if(ei===-1)continue;
     let raw=bytes.slice(si,ei);
     while(raw.length>0&&(raw[raw.length-1]===0x0A||raw[raw.length-1]===0x0D))raw=raw.slice(0,-1);
-    const dec=decompressStream(raw); if(!dec)continue;
+    const dec=decompressStream(raw);if(!dec)continue;
     const decoded=new TextDecoder('latin1').decode(dec);
     if(decoded.trimStart().startsWith('%'))continue;
-    if(/^S\s*$/m.test(decoded)&&/\d\s+m[\r\n]/.test(decoded))return decoded;
+    if(/^[Sf]\s*$/m.test(decoded)&&/\d\s+m[\r\n]/.test(decoded))return decoded;
   }
   return null;
 }
 
-/* ── Path Parser ── */
-function parsePathOps(text){
-  const subs=[];let cur=[];
-  for(const line of text.split('\n')){
-    const t=line.trim();if(!t)continue;const p=t.split(/\s+/),op=p[p.length-1];
-    if(op==='m'){if(cur.length)subs.push(cur);cur=[{op:'m',x:+p[0],y:+p[1]}];}
-    else if(op==='l')cur.push({op:'l',x:+p[0],y:+p[1]});
-    else if(op==='c')cur.push({op:'c',x1:+p[0],y1:+p[1],x2:+p[2],y2:+p[3],x:+p[4],y:+p[5]});
-    else if(op==='h'&&cur.length)cur.push({op:'h',x:cur[0].x,y:cur[0].y});
-  }
-  if(cur.length)subs.push(cur);return subs;
-}
-function parseStream(st){
+/* ── CTM math ── */
+function mulCTM(a,b){return{a:a.a*b.a+a.b*b.c,b:a.a*b.b+a.b*b.d,c:a.c*b.a+a.d*b.c,d:a.c*b.b+a.d*b.d,e:a.e*b.a+a.f*b.c+b.e,f:a.e*b.b+a.f*b.d+b.f};}
+function txPt(x,y,ct){return{x:ct.a*x+ct.c*y+ct.e,y:ct.b*x+ct.d*y+ct.f};}
+const I={a:1,b:0,c:0,d:1,e:0,f:0};
+
+/* ── Full stream parser — extract all segments with absolute coords ── */
+function parseStreamFull(st){
   const lines=st.replace(/\r\n/g,'\n').replace(/\r/g,'\n').split('\n');
-  const blocks=[];let pathLines=[],inPath=false,ctm={a:1,b:0,c:0,d:1,e:0,f:0},blockCTM=null,color='#fff',lw=1,layerName='Default';
-  const PR=/^(-?\d[\d.]*\s+){1,6}[mlcvy]$/,RR=/^(-?\d[\d.]*\s+){3,4}re$/;
-  for(let i=0;i<lines.length;i++){
-    const t=lines[i].trim();
-    const bdc=t.match(/^\/OC\s+(\/\w+)\s+BDC/);if(bdc)layerName=bdc[1].slice(1);
-    const cm=t.match(/^q\s+([\d.-]+)\s+([\d.-]+)\s+([\d.-]+)\s+([\d.-]+)\s+([\d.-]+)\s+([\d.-]+)\s+cm$/);
-    if(cm)ctm={a:+cm[1],b:+cm[2],c:+cm[3],d:+cm[4],e:+cm[5],f:+cm[6]};
-    const km=t.match(/^([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+K$/);
-    if(km){const[c,m2,y,k]=[+km[1],+km[2],+km[3],+km[4]];color=`rgb(${Math.round(255*(1-c)*(1-k))},${Math.round(255*(1-m2)*(1-k))},${Math.round(255*(1-y)*(1-k))})`;}
-    if(/SCN$/.test(t))color='#ff00ff';
-    const wm=t.match(/^([\d.]+)\s+w$/);if(wm)lw=+wm[1];
-    const isPath=PR.test(t)||t==='h';let isClip=false;
-    if(RR.test(t)){for(let j=i+1;j<lines.length;j++){const nt=lines[j].trim();if(!nt)continue;if(/^W\*?\s*(n)?$/.test(nt))isClip=true;break;}}
-    if((isPath||(RR.test(t)&&!isClip))&&!isClip){if(!inPath)blockCTM={...ctm};inPath=true;pathLines.push(lines[i]);continue;}
-    if(t==='S'&&inPath&&pathLines.length){blocks.push({subpaths:parsePathOps(pathLines.join('\n')),ctm:blockCTM,color,lineWidth:lw,layerName});pathLines=[];inPath=false;continue;}
-    if(inPath&&pathLines.length){pathLines=[];inPath=false;}
+  const segments=[];
+  const ctmStack=[{...I}];
+  let ctm={...I};
+  let color='#fff',lineWidth=1,layerName='Default',isDashed=false;
+  let curPath=[];  // [{op,x,y,...}] in absolute coords
+  let curPathRaw=[]; // original text lines for this path
+
+  const PR=/^(-?\d[\d.]*\s+){1,6}[mlcvy]$/;
+  const RR=/^(-?\d[\d.]*\s+){3,4}re$/;
+
+  function flushPath(paintOp){
+    if(!curPath.length){curPathRaw=[];return;}
+    const isFill=paintOp==='f'||paintOp==='F'||paintOp==='f*'||paintOp==='B'||paintOp==='B*';
+    const isStroke=paintOp==='S'||paintOp==='s'||paintOp==='B'||paintOp==='B*';
+    // Extract subpaths (split on m)
+    const subpaths=[];let cur=[];
+    for(const pt of curPath){
+      if(pt.op==='m'){if(cur.length)subpaths.push(cur);cur=[pt];}
+      else cur.push(pt);
+    }
+    if(cur.length)subpaths.push(cur);
+    for(const sp of subpaths){
+      if(sp.length<2)continue;
+      const absPoints=sp.map(p=>({op:p.op,x:p.x,y:p.y,x1:p.x1,y1:p.y1,x2:p.x2,y2:p.y2}));
+      segments.push({absPoints,color,lineWidth,layerName,isFill,isStroke,isDashed,origPathText:curPathRaw.join('\n')});
+    }
+    curPath=[];curPathRaw=[];
   }
-  return blocks;
+
+  for(let i=0;i<lines.length;i++){
+    const t=lines[i].trim();if(!t)continue;
+    const parts=t.split(/\s+/);
+    const op=parts[parts.length-1];
+
+    // Graphics state
+    if(op==='q'){ctmStack.push({...ctm});continue;}
+    if(op==='Q'){if(ctmStack.length>1)ctm=ctmStack.pop();continue;}
+    if(op==='cm'&&parts.length>=7){
+      const nc={a:+parts[0],b:+parts[1],c:+parts[2],d:+parts[3],e:+parts[4],f:+parts[5]};
+      ctm=mulCTM(nc,ctm);continue;
+    }
+
+    // Color
+    if(op==='K'&&parts.length>=5){const[c,m2,y,k]=[+parts[0],+parts[1],+parts[2],+parts[3]];color=`rgb(${Math.round(255*(1-c)*(1-k))},${Math.round(255*(1-m2)*(1-k))},${Math.round(255*(1-y)*(1-k))})`;}
+    if(op==='SCN'||op==='scn')color='#ff00ff';
+    if(op==='RG'&&parts.length>=4)color=`rgb(${Math.round(+parts[0]*255)},${Math.round(+parts[1]*255)},${Math.round(+parts[2]*255)})`;
+    if(op==='w'&&parts.length>=2)lineWidth=+parts[0];
+    if(op==='d')isDashed=t.includes('[')&&!t.includes('[]');
+
+    // Layer
+    const bdc=t.match(/^\/OC\s+(\/\w+)\s+BDC/);if(bdc)layerName=bdc[1].slice(1);
+
+    // Clipping rect — skip
+    if(RR.test(t)){
+      let isClip=false;
+      for(let j=i+1;j<lines.length;j++){const nt=lines[j].trim();if(!nt)continue;if(/^W\*?\s*(n)?$/.test(nt))isClip=true;break;}
+      if(isClip)continue;
+    }
+
+    // Path ops — transform to absolute coordinates
+    if(op==='m'&&parts.length>=3){
+      // New subpath within current path
+      const p=txPt(+parts[0],+parts[1],ctm);
+      curPath.push({op:'m',x:p.x,y:p.y});curPathRaw.push(lines[i]);continue;
+    }
+    if(op==='l'&&parts.length>=3){const p=txPt(+parts[0],+parts[1],ctm);curPath.push({op:'l',x:p.x,y:p.y});curPathRaw.push(lines[i]);continue;}
+    if(op==='c'&&parts.length>=7){
+      const p1=txPt(+parts[0],+parts[1],ctm),p2=txPt(+parts[2],+parts[3],ctm),p3=txPt(+parts[4],+parts[5],ctm);
+      curPath.push({op:'c',x:p3.x,y:p3.y,x1:p1.x,y1:p1.y,x2:p2.x,y2:p2.y});curPathRaw.push(lines[i]);continue;
+    }
+    if(op==='h'){if(curPath.length)curPath.push({op:'h',x:curPath[0].x,y:curPath[0].y});curPathRaw.push(lines[i]);continue;}
+
+    // Paint ops
+    if(op==='S'||op==='s'){flushPath('S');continue;}
+    if(op==='f'||op==='F'||op==='f*'){flushPath('f');continue;}
+    if(op==='B'||op==='B*'||op==='b'||op==='b*'){flushPath('B');continue;}
+    if(op==='n'){curPath=[];curPathRaw=[];continue;} // discard (clipping)
+  }
+  return segments;
 }
 
-/* ── Welding ── */
-function gS(sp){return{x:sp[0].x,y:sp[0].y};}
-function gE(sp){const l=sp[sp.length-1];return{x:l.x,y:l.y};}
+/* ── Endpoint-based chaining across all segments ── */
+function gS(pts){return{x:pts[0].x,y:pts[0].y};}
+function gE(pts){const l=pts[pts.length-1];return{x:l.x,y:l.y};}
 function pD(a,b){return Math.sqrt((a.x-b.x)**2+(a.y-b.y)**2);}
-function revSP(segs){
-  if(segs.length<=1)return[...segs];const e=gE(segs),r=[{op:'m',x:e.x,y:e.y}];
-  for(let i=segs.length-1;i>=1;i--){const s=segs[i],p=segs[i-1];
-    if(s.op==='c')r.push({op:'c',x1:s.x2,y1:s.y2,x2:s.x1,y2:s.y1,x:p.x,y:p.y});
-    else r.push({op:'l',x:p.x,y:p.y});}return r;
+
+function reversePoints(pts){
+  if(pts.length<=1)return[...pts];
+  const e=gE(pts);const r=[{op:'m',x:e.x,y:e.y}];
+  for(let i=pts.length-1;i>=1;i--){
+    const s=pts[i],p=pts[i-1];
+    if(s.op==='c')r.push({op:'c',x:p.x,y:p.y,x1:s.x2,y1:s.y2,x2:s.x1,y2:s.y1});
+    else r.push({op:'l',x:p.x,y:p.y});
+  }
+  return r;
 }
-function weldSP(subs,tol){
-  const valid=subs.filter(s=>s.length>=2);if(valid.length<=1)return{welded:valid.length?valid:subs,joins:0};
-  const paths=valid.map(s=>({segs:[...s],used:false}));const chains=[];let joins=0;
-  while(true){const seed=paths.find(p=>!p.used);if(!seed)break;seed.used=true;let chain=[...seed.segs];let changed=true;
-    while(changed){changed=false;const cs=gS(chain),ce=gE(chain);
-      for(const p of paths){if(p.used)continue;const ps=gS(p.segs),pe=gE(p.segs);
-        if(pD(ce,ps)<=tol){chain=chain.concat(p.segs.slice(1));p.used=true;changed=true;joins++;break;}
-        if(pD(pe,cs)<=tol){chain=[...p.segs,...chain.slice(1)];p.used=true;changed=true;joins++;break;}
-        if(pD(ce,pe)<=tol){chain=chain.concat(revSP(p.segs).slice(1));p.used=true;changed=true;joins++;break;}
-        if(pD(ps,cs)<=tol){chain=[...revSP(p.segs),...chain.slice(1)];p.used=true;changed=true;joins++;break;}
-      }}chains.push(chain);}return{welded:chains,joins};
+
+function weldSegments(segments,tol){
+  // Only weld stroked, non-fill, non-dashed segments
+  const strokeSegs=[], otherSegs=[];
+  for(const seg of segments){
+    if(seg.isStroke&&!seg.isFill&&!seg.isDashed&&seg.absPoints.length>=2)
+      strokeSegs.push(seg);
+    else otherSegs.push(seg);
+  }
+
+  if(strokeSegs.length<=1)return{chains:strokeSegs.map(s=>({absPoints:s.absPoints,color:s.color,lineWidth:s.lineWidth,layerName:s.layerName,closed:false})),others:otherSegs,joins:0};
+
+  // Endpoint map for fast lookup
+  const key=p=>`${Math.round(p.x*100)/100},${Math.round(p.y*100)/100}`;
+  const endMap=new Map();
+  strokeSegs.forEach((seg,i)=>{
+    const addKey=(p,isStart)=>{const k=key(p);if(!endMap.has(k))endMap.set(k,[]);endMap.get(k).push({idx:i,isStart});};
+    addKey(gS(seg.absPoints),true);
+    addKey(gE(seg.absPoints),false);
+  });
+
+  const used=new Set();
+  const chains=[];
+  let joins=0;
+
+  for(let i=0;i<strokeSegs.length;i++){
+    if(used.has(i))continue;
+    used.add(i);
+    let chain=[...strokeSegs[i].absPoints];
+    let chainColor=strokeSegs[i].color;
+    let chainLW=strokeSegs[i].lineWidth;
+    let chainLayer=strokeSegs[i].layerName;
+
+    // Grow forward
+    let changed=true;
+    while(changed){
+      changed=false;
+      const ce=gE(chain);
+      const candidates=endMap.get(key(ce))||[];
+      for(const c of candidates){
+        if(used.has(c.idx))continue;
+        const seg=strokeSegs[c.idx];
+        // Double-check distance with actual coords
+        const matchPt=c.isStart?gS(seg.absPoints):gE(seg.absPoints);
+        if(pD(ce,matchPt)>tol)continue;
+        if(c.isStart){
+          chain=chain.concat(seg.absPoints.slice(1));
+        } else {
+          chain=chain.concat(reversePoints(seg.absPoints).slice(1));
+        }
+        used.add(c.idx);changed=true;joins++;break;
+      }
+    }
+    // Grow backward
+    changed=true;
+    while(changed){
+      changed=false;
+      const cs=gS(chain);
+      const candidates=endMap.get(key(cs))||[];
+      for(const c of candidates){
+        if(used.has(c.idx))continue;
+        const seg=strokeSegs[c.idx];
+        const matchPt=c.isStart?gS(seg.absPoints):gE(seg.absPoints);
+        if(pD(cs,matchPt)>tol)continue;
+        if(!c.isStart){
+          chain=[...seg.absPoints,...chain.slice(1)];
+        } else {
+          chain=[...reversePoints(seg.absPoints),...chain.slice(1)];
+        }
+        used.add(c.idx);changed=true;joins++;break;
+      }
+    }
+
+    // Check if closed
+    const closed=pD(gS(chain),gE(chain))<=tol;
+    chains.push({absPoints:chain,color:chainColor,lineWidth:chainLW,layerName:chainLayer,closed});
+  }
+
+  // Any unused stroke segs
+  for(let i=0;i<strokeSegs.length;i++){
+    if(!used.has(i)){
+      const s=strokeSegs[i];
+      chains.push({absPoints:s.absPoints,color:s.color,lineWidth:s.lineWidth,layerName:s.layerName,closed:false});
+    }
+  }
+
+  return{chains,others:otherSegs,joins};
 }
 
 /* ── SVG ── */
-function renderPaths(svg,blocks,showNum){
+function renderSegments(svg,items,showNum){
   svg.innerHTML='';if(!pageMediaBox)return;
-  const[mx,my,mw,mh]=pageMediaBox;svg.setAttribute('viewBox',`${mx} ${-mh} ${mw-mx} ${mh-my}`);svg.setAttribute('preserveAspectRatio','xMidYMid meet');
+  const[mx,my,mw,mh]=pageMediaBox;
+  svg.setAttribute('viewBox',`${mx} ${-mh} ${mw-mx} ${mh-my}`);
+  svg.setAttribute('preserveAspectRatio','xMidYMid meet');
   const colors=['#38bdf8','#f472b6','#4ade80','#fbbf24','#a78bfa','#fb923c','#e879f9','#22d3ee','#f97316','#84cc16'];
-  blocks.forEach((bl,bi)=>{const ct=bl.ctm||{a:1,b:0,c:0,d:1,e:0,f:0};const tx=(x,y)=>({x:ct.a*x+ct.c*y+ct.e,y:ct.b*x+ct.d*y+ct.f});
-    bl.subpaths.forEach((sp,si)=>{if(!sp.length)return;let d='';
-      for(const s of sp){const p=tx(s.x,s.y);if(s.op==='m')d+=`M${p.x.toFixed(2)} ${(-p.y).toFixed(2)} `;
-        else if(s.op==='l'||s.op==='h')d+=`L${p.x.toFixed(2)} ${(-p.y).toFixed(2)} `;
-        else if(s.op==='c'){const p1=tx(s.x1,s.y1),p2=tx(s.x2,s.y2);d+=`C${p1.x.toFixed(2)} ${(-p1.y).toFixed(2)} ${p2.x.toFixed(2)} ${(-p2.y).toFixed(2)} ${p.x.toFixed(2)} ${(-p.y).toFixed(2)} `;}}
-      if(!d.trim())return;const path=document.createElementNS('http://www.w3.org/2000/svg','path');path.setAttribute('d',d);path.setAttribute('fill','none');
-      path.setAttribute('stroke',showNum?colors[(bi*7+si)%colors.length]:(bl.color||'#fff'));path.setAttribute('stroke-width',showNum?'1.5':'1.2');svg.appendChild(path);
-      if(showNum){const st=tx(sp[0].x,sp[0].y),en=tx(gE(sp).x,gE(sp).y);
-        [[st,'#4ade80'],[en,'#f87171']].forEach(([pt,fill])=>{const c=document.createElementNS('http://www.w3.org/2000/svg','circle');c.setAttribute('cx',pt.x.toFixed(2));c.setAttribute('cy',(-pt.y).toFixed(2));c.setAttribute('r','3');c.setAttribute('fill',fill);svg.appendChild(c);});
-        const mid=sp[Math.floor(sp.length/2)],mp=tx(mid.x,mid.y),lbl=document.createElementNS('http://www.w3.org/2000/svg','text');
-        lbl.setAttribute('x',mp.x.toFixed(2));lbl.setAttribute('y',(-(mp.y)+8).toFixed(2));lbl.setAttribute('fill',colors[(bi*7+si)%colors.length]);lbl.setAttribute('font-size','8');lbl.setAttribute('text-anchor','middle');lbl.textContent=`${bi}.${si}`;svg.appendChild(lbl);}
-    });});
+  items.forEach((item,si)=>{
+    const pts=item.absPoints;if(!pts||!pts.length)return;
+    let d='';
+    for(const p of pts){
+      if(p.op==='m')d+=`M${p.x.toFixed(2)} ${(-p.y).toFixed(2)} `;
+      else if(p.op==='l'||p.op==='h')d+=`L${p.x.toFixed(2)} ${(-p.y).toFixed(2)} `;
+      else if(p.op==='c')d+=`C${p.x1.toFixed(2)} ${(-p.y1).toFixed(2)} ${p.x2.toFixed(2)} ${(-p.y2).toFixed(2)} ${p.x.toFixed(2)} ${(-p.y).toFixed(2)} `;
+    }
+    if(item.closed)d+='Z ';
+    if(!d.trim())return;
+    const path=document.createElementNS('http://www.w3.org/2000/svg','path');
+    path.setAttribute('d',d);path.setAttribute('fill','none');
+    path.setAttribute('stroke',showNum?colors[si%colors.length]:(item.color||'#fff'));
+    path.setAttribute('stroke-width',showNum?'1.5':'1.2');
+    if(item.isDashed)path.setAttribute('stroke-dasharray','8 4');
+    svg.appendChild(path);
+    if(showNum&&pts.length>=2){
+      const st=gS(pts),en=gE(pts);
+      [[st,'#4ade80'],[en,'#f87171']].forEach(([pt,fill])=>{const c=document.createElementNS('http://www.w3.org/2000/svg','circle');c.setAttribute('cx',pt.x.toFixed(2));c.setAttribute('cy',(-pt.y).toFixed(2));c.setAttribute('r','3');c.setAttribute('fill',fill);svg.appendChild(c);});
+      const mid=pts[Math.floor(pts.length/2)];
+      const lbl=document.createElementNS('http://www.w3.org/2000/svg','text');
+      lbl.setAttribute('x',mid.x.toFixed(2));lbl.setAttribute('y',(-(mid.y)+8).toFixed(2));
+      lbl.setAttribute('fill',colors[si%colors.length]);lbl.setAttribute('font-size','8');lbl.setAttribute('text-anchor','middle');
+      lbl.textContent=`${si}`;svg.appendChild(lbl);
+    }
+  });
 }
 
 /* ── PDF Export ── */
 function fmt(n){const s=n.toFixed(4);return s.replace(/\.?0+$/,'')||'0';}
 
 async function exportWeldedPDF(){
-  if(!pdfBytes||!weldedBlocks.length)return;
+  if(!pdfBytes||(!weldedChains.length&&!unweldedSegs.length))return;
   log('Building welded PDF...','info');
-  const origStream=findDrawingStream(pdfBytes);
-  if(!origStream){log('Error: drawing stream not found','error');return;}
 
-  /* Rebuild stream content with welded paths */
-  const origLines=origStream.replace(/\r\n/g,'\n').replace(/\r/g,'\n').split('\n');
-  const PR=/^(-?\d[\d.]*\s+){1,6}[mlcvy]$/,RR=/^(-?\d[\d.]*\s+){3,4}re$/;
-  const types=origLines.map((line,idx)=>{const t=line.trim();if(!t)return'empty';if(PR.test(t)||t==='h')return'path';if(t==='S')return'stroke';
-    if(RR.test(t)){for(let j=idx+1;j<origLines.length;j++){const nt=origLines[j].trim();if(!nt)continue;if(/^W\*?\s*(n)?$/.test(nt))return'clip';break;}return'path';}return'other';});
-  const wTexts=weldedBlocks.map(bl=>{const ls=[];bl.subpaths.forEach(sp=>sp.forEach(s=>{
-    if(s.op==='m')ls.push(`${fmt(s.x)} ${fmt(s.y)} m`);else if(s.op==='l')ls.push(`${fmt(s.x)} ${fmt(s.y)} l`);
-    else if(s.op==='h')ls.push('h');else if(s.op==='c')ls.push(`${fmt(s.x1)} ${fmt(s.y1)} ${fmt(s.x2)} ${fmt(s.y2)} ${fmt(s.x)} ${fmt(s.y)} c`);}));return ls.join('\n');});
-  const result=[...origLines];let sIdx=0;
-  for(let i=0;i<types.length;i++){if(types[i]!=='stroke')continue;let ps=i;
-    for(let j=i-1;j>=0;j--){if(types[j]==='path')ps=j;else if(types[j]==='empty')continue;else break;}
-    if(ps<i&&sIdx<wTexts.length){for(let j=ps;j<i;j++)result[j]=null;result[ps]=wTexts[sIdx];log(`  Replaced stroke block ${sIdx}`,'success');}sIdx++;}
-  const newStream=result.filter(l=>l!==null).join('\n');
-  const om=(origStream.match(/[\d.]+\s+[\d.-]+\s+m/g)||[]).length;
-  const nm=(newStream.match(/[\d.]+\s+[\d.-]+\s+m/g)||[]).length;
-  log(`Moveto ops: ${om} → ${nm}`,om!==nm?'success':'warn');
+  /* Build new content stream from scratch — one path per chain */
+  const streamLines=[];
 
-  /* Use pdf-lib to properly write the new PDF */
+  // Group by layer
+  const layers=new Map();
+  const allItems=[...weldedChains,...unweldedSegs.map(s=>({absPoints:s.absPoints,color:s.color,lineWidth:s.lineWidth,layerName:s.layerName,closed:false,isFill:s.isFill,isDashed:s.isDashed}))];
+
+  // Collect unique layer names in order
+  const layerOrder=[];const seen=new Set();
+  for(const item of allItems){if(!seen.has(item.layerName)){seen.add(item.layerName);layerOrder.push(item.layerName);}}
+
+  for(const ln of layerOrder){
+    const layerItems=allItems.filter(it=>it.layerName===ln);
+    // Find OC reference name from original stream
+    const ocMatch=origStreamText.match(new RegExp(`/OC\\s+(/\\w+)\\s+BDC[\\s\\S]*?${ln.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}`));
+    const ocName=origStreamText.match(/\/OC\s+(\/\w+)\s+BDC/);
+    // Just use layer markers from original
+    const bdcMatch=origStreamText.match(new RegExp(`/OC\\s+(/\\w+)\\s+BDC`,'g'));
+
+    for(const item of layerItems){
+      streamLines.push('q');
+      // Set color
+      if(item.color&&item.color.startsWith('rgb')){
+        const m=item.color.match(/(\d+)/g);
+        if(m&&m.length>=3){
+          const[r,g,b]=[+m[0]/255,+m[1]/255,+m[2]/255];
+          // Convert to CMYK approx
+          const k2=1-Math.max(r,g,b);
+          if(k2<1){const c2=(1-r-k2)/(1-k2),m2=(1-g-k2)/(1-k2),y2=(1-b-k2)/(1-k2);
+            streamLines.push(`${fmt(c2)} ${fmt(m2)} ${fmt(y2)} ${fmt(k2)} K`);}
+          else streamLines.push('0 0 0 1 K');
+        }
+      }
+      streamLines.push(`${fmt(item.lineWidth)} w`);
+      if(item.isDashed)streamLines.push('[18 9] 0 d');
+      streamLines.push('1 j 1 J'); // round join + cap
+
+      // Emit path in absolute coords (identity CTM)
+      for(const p of item.absPoints){
+        if(p.op==='m')streamLines.push(`${fmt(p.x)} ${fmt(p.y)} m`);
+        else if(p.op==='l')streamLines.push(`${fmt(p.x)} ${fmt(p.y)} l`);
+        else if(p.op==='h')streamLines.push('h');
+        else if(p.op==='c')streamLines.push(`${fmt(p.x1)} ${fmt(p.y1)} ${fmt(p.x2)} ${fmt(p.y2)} ${fmt(p.x)} ${fmt(p.y)} c`);
+      }
+      if(item.closed)streamLines.push('h');
+      if(item.isFill)streamLines.push('f');
+      else streamLines.push('S');
+      streamLines.push('Q');
+    }
+  }
+
+  const newStream=streamLines.join('\n');
+  log(`New stream: ${newStream.length} chars`,'info');
+  const origMoves=(origStreamText.match(/[\d.]+\s+[\d.-]+\s+m/g)||[]).length;
+  const newMoves=(newStream.match(/[\d.]+\s+[\d.-]+\s+m/g)||[]).length;
+  log(`Moveto ops: ${origMoves} → ${newMoves}`,origMoves!==newMoves?'success':'warn');
+
+  /* Write PDF with pdf-lib */
   const doc=await PDFLib.PDFDocument.load(pdfBytes.slice(0),{ignoreEncryption:true});
   const page=doc.getPages()[0];
 
-  /* Find and replace the drawing content stream */
-  const contentsVal=page.node.get(PDFLib.PDFName.of('Contents'));
-  const refs=[];
-  if(contentsVal instanceof PDFLib.PDFArray){for(let i=0;i<contentsVal.size();i++)refs.push({ref:contentsVal.get(i),idx:i});}
-  else refs.push({ref:contentsVal,idx:-1});
-  let replaced=false;
-  for(const{ref,idx}of refs){
-    const obj=doc.context.lookup(ref);if(!obj)continue;
-    try{const raw=obj.getContents();const dec=decompressStream(new Uint8Array(raw));
-      if(!dec)continue;const t=new TextDecoder('latin1').decode(dec);
-      if(/^S\s*$/m.test(t)&&/\d\s+m[\r\n]/.test(t)&&!t.trimStart().startsWith('%')){
-        /* Encode as latin-1 bytes — TextEncoder would produce UTF-8 which corrupts bytes > 0x7F */
-        const newBytes=new Uint8Array(newStream.length);
-        for(let i=0;i<newStream.length;i++)newBytes[i]=newStream.charCodeAt(i)&0xFF;
-        const ns=doc.context.flateStream(newBytes);const nr=doc.context.register(ns);
-        if(contentsVal instanceof PDFLib.PDFArray)contentsVal.set(idx,nr);
-        else page.node.set(PDFLib.PDFName.of('Contents'),nr);
-        replaced=true;log('Content stream replaced','success');break;
-      }}catch(e){continue;}}
-  if(!replaced){log('Error: could not replace stream','error');return;}
+  // Encode as latin-1 bytes
+  const newBytes=new Uint8Array(newStream.length);
+  for(let i=0;i<newStream.length;i++)newBytes[i]=newStream.charCodeAt(i)&0xFF;
 
-  /* Strip Illustrator private roundtrip data */
+  const ns=doc.context.flateStream(newBytes);
+  const nr=doc.context.register(ns);
+  page.node.set(PDFLib.PDFName.of('Contents'),nr);
+
+  // Strip Illustrator private data
   const pi=page.node.get(PDFLib.PDFName.of('PieceInfo'));
   if(pi){page.node.delete(PDFLib.PDFName.of('PieceInfo'));log('Stripped Illustrator private data','success');}
 
@@ -281,29 +440,44 @@ function parsePDF(){
   const mb=text.match(/\/MediaBox\s*\[\s*([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s*\]/);
   pageMediaBox=mb?mb.slice(1,5).map(Number):[0,0,612,792];
   log(`Page: ${pageMediaBox[2]}×${pageMediaBox[3]} pt`,'info');
-  const stream=findDrawingStream(pdfBytes);
-  if(!stream){log('No vector content found!','error');return;}
-  log(`Drawing stream: ${stream.length} chars`,'success');
-  parsedBlocks=parseStream(stream);let total=0;
-  parsedBlocks.forEach(b=>{total+=b.subpaths.length;log(`  ${b.layerName}: ${b.subpaths.length} subpaths, ${b.lineWidth}pt`,'');});
+  origStreamText=findDrawingStream(pdfBytes);
+  if(!origStreamText){log('No vector content found!','error');return;}
+  log(`Drawing stream: ${origStreamText.length} chars`,'success');
+  parsedSegments=parseStreamFull(origStreamText);
+  const strokes=parsedSegments.filter(s=>s.isStroke&&!s.isFill);
+  const fills=parsedSegments.filter(s=>s.isFill);
+  log(`  ${strokes.length} stroke segment(s), ${fills.length} fill(s)`,'info');
   resultsArea.classList.remove('hidden');dropZone.classList.add('hidden');
-  renderPaths(document.getElementById('svgBefore'),parsedBlocks,true);
+  renderSegments(document.getElementById('svgBefore'),parsedSegments,true);
   document.getElementById('svgAfter').innerHTML='<text x="50%" y="50%" text-anchor="middle" fill="#666" font-size="14">Click "Weld Paths"</text>';
-  updateStats(total,0,0);btnWeld.disabled=false;btnExport.disabled=true;
+  updateStats(parsedSegments.length,0,0);btnWeld.disabled=false;btnExport.disabled=true;
 }
 function updateStats(b,a,j){
-  statsBar.innerHTML=`<div class="stat-card before"><div class="label">Before</div><div class="value">${b}</div><div class="detail">subpaths</div></div>
+  statsBar.innerHTML=`<div class="stat-card before"><div class="label">Before</div><div class="value">${b}</div><div class="detail">segments</div></div>
   <div class="stat-card after"><div class="label">After</div><div class="value">${a||'—'}</div><div class="detail">continuous paths</div></div>
-  <div class="stat-card savings"><div class="label">Lifts Eliminated</div><div class="value">${j||'—'}</div><div class="detail">fewer movements</div></div>`;
+  <div class="stat-card savings"><div class="label">Joins Made</div><div class="value">${j||'—'}</div><div class="detail">segments connected</div></div>`;
 }
 function runWeld(){
   const tol=parseFloat(tolSlider.value);log(`Welding with tolerance ${tol} pt...`,'info');
-  weldedBlocks=[];let tB=0,tA=0,tJ=0;
-  for(const bl of parsedBlocks){tB+=bl.subpaths.length;const{welded,joins}=weldSP(bl.subpaths,tol);
-    weldedBlocks.push({...bl,subpaths:welded});tA+=welded.length;tJ+=joins;
-    log(`  ${bl.layerName}: ${bl.subpaths.length} → ${welded.length} (${joins} joins)`,'success');}
-  log(`Total: ${tB} → ${tA}, ${tJ} lifts eliminated`,'success');
-  updateStats(tB,tA,tJ);renderPaths(document.getElementById('svgAfter'),weldedBlocks,true);btnExport.disabled=false;
+  const result=weldSegments(parsedSegments,tol);
+  weldedChains=result.chains;unweldedSegs=result.others;
+  const totalAfter=weldedChains.length+unweldedSegs.length;
+  log(`  Strokes: ${parsedSegments.filter(s=>s.isStroke&&!s.isFill).length} → ${weldedChains.length} path(s) (${result.joins} joins)`,'success');
+  weldedChains.forEach((ch,i)=>{if(ch.closed)log(`    Chain ${i}: CLOSED loop (${ch.absPoints.length} points)`,'success');});
+  log(`  Total: ${parsedSegments.length} → ${totalAfter}`,'success');
+  updateStats(parsedSegments.length,totalAfter,result.joins);
+  const allForRender=[...weldedChains,...unweldedSegs.map(s=>({absPoints:s.absPoints,color:s.color,lineWidth:s.lineWidth,isDashed:s.isDashed}))];
+  renderSegments(document.getElementById('svgAfter'),allForRender,true);
+  btnExport.disabled=false;
+}
+
+/* ── Auto-load ── */
+const params=new URLSearchParams(window.location.search);
+const autoFile=params.get('file');
+if(autoFile){log(`Auto-loading: ${autoFile}`,'info');
+  (async()=>{try{const r=await fetch(autoFile);if(!r.ok)throw new Error(`HTTP ${r.status}`);
+    const buf=await r.arrayBuffer();currentFileName=autoFile.split('/').pop().replace(/\.pdf$/i,'');
+    pdfBytes=new Uint8Array(buf);parsePDF();}catch(e){log(`Auto-load failed: ${e.message}`,'error');}})();
 }
 </script>
 </body>
